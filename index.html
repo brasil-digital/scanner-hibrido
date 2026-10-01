@@ -498,7 +498,7 @@ function opcoesApagar(rel) {
 
 function atualizarBotoes() {
   $("bDiag").disabled = !adaptador;
-  $("bCopiar").disabled = !relatorio;
+  $("bCopiar").disabled = !relatorio && !logEl.textContent;
   $("bApagar").disabled = !relatorio || !opcoesApagar(relatorio).length;
 }
 
@@ -532,7 +532,8 @@ $("bDiag").onclick = () => rodar(async () => {
 });
 
 $("bCopiar").onclick = async () => {
-  const texto = JSON.stringify(relatorio, null, 2) + "\n\n--- registro técnico ---\n" + logEl.textContent;
+  const texto = (relatorio ? JSON.stringify(relatorio, null, 2) : "(diagnóstico não concluído)")
+    + "\n\n--- registro técnico ---\n" + logEl.textContent;
   try { await navigator.clipboard.writeText(texto); status("📋 Relatório copiado. Cole na conversa com o Claude.", "ok"); }
   catch { status("Não consegui copiar. Abra o registro técnico e copie manualmente.", "erro"); }
 };
