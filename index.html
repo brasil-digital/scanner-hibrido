@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>Scanner Híbrido</title>
+<style>
+  :root {
+    --bg: #0b1220; --card: #131c2e; --linha: #22304a; --texto: #e6edf7; --fraco: #8b9bb4;
+    --azul: #3b82f6; --verde: #22c55e; --amarelo: #f59e0b; --vermelho: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--texto);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  header { padding: 18px 0 8px; }
+  h1 { font-size: 22px; margin: 0; }
+  .sub { color: var(--fraco); font-size: 14px; }
+  .status { margin: 12px 0; padding: 10px 12px; border-radius: 10px; background: var(--card);
+            border: 1px solid var(--linha); font-size: 14px; }
+  .status.ok { border-color: var(--verde); }
+  .status.erro { border-color: var(--vermelho); }
+  .botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+  button {
+    font: inherit; font-weight: 600; padding: 14px 10px; border-radius: 12px; border: 0;
+    background: var(--azul); color: #fff; min-height: 50px;
+  }
+  button.sec { background: var(--card); border: 1px solid var(--linha); color: var(--texto); }
+  button.perigo { background: transparent; border: 1px solid var(--vermelho); color: var(--vermelho); }
+  button:disabled { opacity: .4; }
+  .full { grid-column: 1 / -1; }
+  section { background: var(--card); border: 1px solid var(--linha); border-radius: 14px;
+            padding: 14px; margin: 12px 0; }
+  section h2 { font-size: 16px; margin: 0 0 10px; }
+  .item { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0;
+          border-bottom: 1px solid var(--linha); font-size: 15px; }
+  .item:last-child { border-bottom: 0; }
+  .item span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .nada { color: var(--fraco); }
+  .codigo { color: var(--amarelo); font-weight: 600; }
+  .selo { padding: 10px 12px; border-radius: 10px; margin-top: 10px; font-weight: 600; }
+  .selo.ok { background: rgba(34,197,94,.12); color: var(--verde); }
+  .selo.atencao { background: rgba(245,158,11,.12); color: var(--amarelo); }
+  .selo.ruim { background: rgba(239,68,68,.12); color: var(--vermelho); }
+  .celulas { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin-top: 10px; }
+  .celulas div { height: 22px; border-radius: 3px; }
+  .legenda { color: var(--fraco); font-size: 12px; margin-top: 6px; }
+  dialog { background: var(--card); color: var(--texto); border: 1px solid var(--linha);
+           border-radius: 14px; padding: 16px; width: min(92vw, 420px); }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog label { display: flex; gap: 10px; align-items: center; padding: 8px 0; }
+  dialog input[type=text] { width: 100%; font: inherit; padding: 10px; border-radius: 8px;
+                            border: 1px solid var(--linha); background: var(--bg); color: var(--texto); }
+  .aviso { font-size: 14px; color: var(--fraco); }
+  .aviso b { color: var(--texto); }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; color: var(--fraco);
+        max-height: 240px; overflow: auto; margin: 0; }
+  details summary { cursor: pointer; color: var(--fraco); font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔋 Scanner Híbrido</h1>
+  <div class="sub">Toyota RAV4 Hybrid · OBDLink CX</div>
+</header>
+
+<div id="status" class="status">Desconectado.</div>
+
+<div class="botoes">
+  <button id="bConectar">Conectar</button>
+  <button id="bSimular" class="sec">Modo teste</button>
+  <button id="bDiag" class="full" disabled>Fazer diagnóstico</button>
+  <button id="bApagar" class="perigo" disabled>Apagar códigos</button>
+  <button id="bCopiar" class="sec" disabled>Copiar relatório</button>
+</div>
+
+<div id="resultado"></div>
+
+<section>
+  <details>
+    <summary>Registro técnico (para enviar se algo der errado)</summary>
+    <pre id="log"></pre>
+  </details>
+</section>
+
+<dialog id="dApagar">
+  <h2 style="margin-top:0">🧹 Apagar códigos</h2>
+  <p class="aviso">Apagar <b>não conserta o defeito</b>: se o problema continuar, o código volta.
+  Os monitores de emissão zeram (o carro só passa na inspeção depois de rodar alguns dias).
+  Faça com o carro <b>parado</b>.</p>
+  <div id="opcoes"></div>
+  <p id="avisoAirbag" class="aviso" style="color:var(--amarelo)" hidden>⚠️ <b>Airbag:</b> se a luz voltar,
+  o airbag pode NÃO disparar numa batida. Não apague para esconder a luz — leve a uma oficina.</p>
+  <p class="aviso">Para confirmar, digite <b>APAGAR</b>:</p>
+  <input id="confirma" type="text" autocapitalize="characters" autocomplete="off">
+  <div class="botoes">
+    <button id="bCancelar" class="sec">Cancelar</button>
+    <button id="bConfirmar" class="perigo">Apagar</button>
+  </div>
+</dialog>
+
+<script>
+// ===================== Regras de segurança =====================
+// Só leitura: 01 03 07 09 0A (OBD), 19 (códigos por módulo), 21/22 (dados do fabricante).
+// Apagar (04 e 14FFFFFF) só pela tela de apagar, com confirmação.
+// Nunca: 2E (gravar), 31 (rotinas), 10/11/27 (sessão, reset de módulo, segurança).
+const MODOS_PERMITIDOS = ["01", "03", "07", "09", "0A", "19", "21", "22"];
+const APAGAR_PERMITIDOS = ["04", "14FFFFFF"];
+
+function checarSeguranca(cmd, apagar) {
+  if (cmd.startsWith("AT")) return;
+  if (apagar && APAGAR_PERMITIDOS.includes(cmd)) return;
+  if (!MODOS_PERMITIDOS.includes(cmd.slice(0, 2))) throw new Error("Comando bloqueado: " + cmd);
+}
+
+// ===================== Dados =====================
+const PIDS = {
+  "0105": ["Temperatura do motor", "°C", b => b[0] - 40],
+  "010C": ["Rotação", "rpm", b => (b[0] * 256 + b[1]) / 4],
+  "010D": ["Velocidade", "km/h", b => b[0]],
+  "012F": ["Combustível", "%", b => +(b[0] * 100 / 255).toFixed(1)],
+  "0142": ["Bateria 12 V", "V", b => (b[0] * 256 + b[1]) / 1000],
+  "0146": ["Temperatura externa", "°C", b => b[0] - 40],
+  "015B": ["Vida da bateria híbrida", "%", b => +(b[0] * 100 / 255).toFixed(1)],
+  "01A6": ["Hodômetro", "km", b => ((b[0] << 24 >>> 0) + (b[1] << 16) + (b[2] << 8) + b[3]) / 10],
+};
+
+// Bateria HV — RAV4 Hybrid 2019+ (conferido em respostas reais de um 2025, base aberta
+// OBDb/Toyota-RAV4-Hybrid, CC-BY-SA-4.0). [cabeçalho, resposta, DID]
+const TOYOTA_HV = {
+  tensaoCorrente: ["7D2", "7DA", "1F9A"],
+  carga: ["7D2", "7DA", "1F5B"],
+  tempMax: ["7D2", "7DA", "1829"],
+  tempMin: ["7D2", "7DA", "182A"],
+  celulas: ["747", "74F", "182E"],
+  temperaturas: ["747", "74F", "1814"],
+};
+
+const MODULOS_TOYOTA = {
+  "7B0": ["7B8", "Freios (ABS / estabilidade)"],
+  "780": ["788", "Airbag / cintos"],
+  "747": ["74F", "Bateria híbrida"],
+  "7D2": ["7DA", "Sistema híbrido"],
+  "7B3": ["7BB", "Direção"],
+  "7C0": ["7C8", "Painel"],
+  "7C4": ["7CC", "Ar-condicionado"],
+};
+
+// ===================== Interpretação das respostas =====================
+const hexParaBytes = h => (h.match(/../g) || []).map(x => parseInt(x, 16));
+const u16 = (b, i) => (b[i] << 8) | b[i + 1];
+
+function limparResposta(texto) {
+  return texto.replace(/\r/g, "\n").split("\n")
+    .map(l => l.trim().replace(/ /g, ""))
+    .filter(l => l && l !== ">" && !l.startsWith("SEARCHING"))
+    .map(l => l.replace(/^[0-9A-F]:/, ""));
+}
+const juntarQuadros = linhas => linhas.filter(l => !/^[0-9A-F]{3}$/.test(l)).join("");
+
+function decodificarPid(pid, linhas) {
+  const prefixo = "4" + pid[1] + pid.slice(2);
+  for (const l of linhas) {
+    if (l.startsWith(prefixo)) {
+      const b = hexParaBytes(l.slice(prefixo.length));
+      const [nome, unidade, f] = PIDS[pid];
+      const v = f(b);
+      if (b.length && !Number.isNaN(v)) return { nome, valor: v, unidade };
+    }
+  }
+  return null;
+}
+
+function decodificarVin(linhas) {
+  const h = juntarQuadros(linhas), i = h.indexOf("490201");
+  if (i < 0) return null;
+  const txt = hexParaBytes(h.slice(i + 6, i + 6 + 34)).map(c => String.fromCharCode(c)).join("");
+  return txt.replace(/[^ -~]/g, "").trim() || null;
+}
+
+function codigoDtc(alto, baixo) {
+  const v = (alto << 8) | baixo;
+  return "PCBU"[v >> 14] + ((v >> 12) & 3) + ((v >> 8) & 0xF).toString(16).toUpperCase()
+       + (v & 0xFF).toString(16).toUpperCase().padStart(2, "0");
+}
+
+function decodificarDtcs(linhas, modo) {
+  const prefixo = { "03": "43", "07": "47", "0A": "4A" }[modo], codigos = [];
+  for (const l of linhas) {
+    if (!l.startsWith(prefixo)) continue;
+    let resto = l.slice(2);
+    if (resto.length % 4 === 2) resto = resto.slice(2); // CAN: 1º byte = quantidade
+    for (let j = 0; j + 4 <= resto.length; j += 4) {
+      const par = resto.slice(j, j + 4);
+      if (par !== "0000") codigos.push(codigoDtc(parseInt(par.slice(0, 2), 16), parseInt(par.slice(2), 16)));
+    }
+  }
+  return codigos;
+}
+
+function decodificarDtcsUds(linhas) {
+  const h = juntarQuadros(linhas), i = h.indexOf("5902");
+  if (i < 0) return null;
+  let resto = h.slice(i + 6);
+  const b = hexParaBytes(resto.slice(0, Math.floor(resto.length / 8) * 8)), codigos = [];
+  for (let j = 0; j + 4 <= b.length; j += 4) {
+    const [alto, baixo, tipo, status] = b.slice(j, j + 4);
+    if (!(alto || baixo) || !(status & 0x0D)) continue;
+    const c = codigoDtc(alto, baixo) + "-" + tipo.toString(16).toUpperCase().padStart(2, "0");
+    if (!codigos.includes(c)) codigos.push(c);
+  }
+  return codigos;
+}
+
+function dadosDid(did, linhas) {
+  const h = juntarQuadros(linhas), i = h.indexOf("62" + did);
+  if (i < 0 || !/^[0-9A-F]*$/.test(h)) return null;
+  return hexParaBytes(h.slice(i + 6));
+}
+
+function avaliarCelulas(difMv) {
+  if (difMv < 30) return ["ok", "✅ Células equilibradas"];
+  if (difMv < 60) return ["atencao", "⚠️ Desequilíbrio leve — vale acompanhar"];
+  return ["ruim", "❌ Desequilíbrio alto — recomendar inspeção da bateria"];
+}
+
+// ===================== Registro técnico =====================
+const logEl = document.getElementById("log");
+function log(t) { logEl.textContent += t + "\n"; }
+
+// ===================== Adaptador Bluetooth (OBDLink CX) =====================
+// Serviços "serial" conhecidos de adaptadores OBD BLE. O Web Bluetooth exige
+// declarar antes; o app usa o primeiro que tiver uma característica de
+// notificação e outra de escrita.
+const SERVICOS_SERIAIS = [
+  0xfff0, 0xffe0, 0x18f0, 0xffb0, 0xae30,
+  "6e400001-b5a3-f393-e0a9-e50e24dcca9e",
+  "e7810a71-73ae-499d-8c15-faa9aef0c3f2",
+  "0000fff0-0000-1000-8000-00805f9b34fb",
+];
+
+class AdaptadorBLE {
+  static async conectar() {
+    if (!navigator.bluetooth) {
+      throw new Error("Este navegador não tem Bluetooth. No iPhone, abra esta página no app Bluefy.");
+    }
+    const dispositivo = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true, optionalServices: SERVICOS_SERIAIS,
+    });
+    log("dispositivo: " + dispositivo.name);
+    const servidor = await dispositivo.gatt.connect();
+    const servicos = await servidor.getPrimaryServices();
+    for (const s of servicos) {
+      const chars = await s.getCharacteristics();
+      const notif = chars.find(c => c.properties.notify || c.properties.indicate);
+      const escr = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+      log(`serviço ${s.uuid}: notify=${!!notif} write=${!!escr}`);
+      if (notif && escr) {
+        const a = new AdaptadorBLE(dispositivo, escr, notif);
+        await notif.startNotifications();
+        notif.addEventListener("characteristicvaluechanged", e => a.receber(e));
+        return a;
+      }
+    }
+    throw new Error("Não achei o canal serial do adaptador. Envie o registro técnico.");
+  }
+
+  constructor(dispositivo, escrita, leitura) {
+    this.nome = dispositivo.name || "adaptador";
+    this.dispositivo = dispositivo;
+    this.escrita = escrita;
+    this.buffer = "";
+    this.esperando = null;
+  }
+
+  receber(e) {
+    this.buffer += new TextDecoder().decode(e.target.value);
+    if (this.buffer.includes(">") && this.esperando) this.esperando();
+  }
+
+  async enviar(cmd, { timeout = 8000, apagar = false } = {}) {
+    checarSeguranca(cmd, apagar);
+    this.buffer = "";
+    const pronto = new Promise(r => { this.esperando = r; setTimeout(r, timeout); });
+    const dados = new TextEncoder().encode(cmd + "\r");
+    for (let i = 0; i < dados.length; i += 20) {
+      const parte = dados.slice(i, i + 20);
+      if (this.escrita.properties.writeWithoutResponse) await this.escrita.writeValueWithoutResponse(parte);
+      else await this.escrita.writeValue(parte);
+    }
+    await pronto;
+    this.esperando = null;
+    const r = this.buffer.replace(/>/g, "").trim();
+    log(`> ${cmd}\n${r}`);
+    return r;
+  }
+
+  async fechar() { if (this.dispositivo.gatt.connected) this.dispositivo.gatt.disconnect(); }
+}
+
+// ===================== Simulador (modo teste, sem carro) =====================
+class AdaptadorSimulado {
+  constructor() {
+    this.nome = "Simulador";
+    this.hdr = "7DF";
+    this.respostas = {
+      "0902": "014\n0:4902014A544D\n1:57524641563353\n2:4A303132333435",
+      "0105": "41055A", "010C": "410C0BB8", "010D": "410D00", "012F": "412F99",
+      "0142": "414236B0", "0146": "414637", "015B": "415BD9", "01A6": "41A6000F4240",
+      "03": "4301C123", "07": "4700", "0A": "4A00",
+    };
+    let celulas = "";
+    for (let i = 0; i < 70; i++) celulas += i === 36 ? "AF00" : (0xAFC0 + (i * 7) % 16).toString(16).toUpperCase();
+    this.enhanced = {
+      "7D2:1F9A": this.multi("621F9A0E003CC0001A"), "7D2:1F5B": "621F5BD1",
+      "7D2:1829": "6218294A00", "7D2:182A": "62182A4700",
+      "747:1814": this.multi("62181440BD408F40C2409C40A34094"),
+      "747:182E": this.multi("62182E" + celulas),
+    };
+    this.modulos = { "7B0": "5902FFC12A0109", "780": "5902FF", "747": "5902FF", "7D2": "5902FF" };
+  }
+  multi(h) {
+    if (h.length <= 14) return h;
+    const linhas = [(h.length / 2).toString(16).toUpperCase().padStart(3, "0"), "0:" + h.slice(0, 12)];
+    let resto = h.slice(12), n = 1;
+    while (resto) { linhas.push((n % 16).toString(16).toUpperCase() + ":" + resto.slice(0, 14)); resto = resto.slice(14); n++; }
+    return linhas.join("\n");
+  }
+  async enviar(cmd, { apagar = false } = {}) {
+    checarSeguranca(cmd, apagar);
+    await new Promise(r => setTimeout(r, 15));
+    let r;
+    if (cmd === "04") { Object.assign(this.respostas, { "03": "4300", "07": "4700" }); r = "44"; }
+    else if (cmd === "14FFFFFF") { this.modulos[this.hdr] = "5902FF"; r = "54"; }
+    else if (cmd.startsWith("ATSH")) { this.hdr = cmd.slice(4); r = "OK"; }
+    else if (cmd === "1902FF") r = this.modulos[this.hdr] || "NO DATA";
+    else if (cmd.startsWith("22")) r = this.enhanced[`${this.hdr}:${cmd.slice(2)}`] || "NO DATA";
+    else r = this.respostas[cmd] || (cmd.startsWith("AT") ? "OK" : "NO DATA");
+    log(`> ${cmd}\n${r}`);
+    return r;
+  }
+  async fechar() {}
+}
+
+// ===================== Diagnóstico =====================
+const INIT = ["ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0"];
+
+async function lerDid(a, hdr, rax, did) {
+  await a.enviar("ATSH" + hdr);
+  await a.enviar("ATCRA" + rax);
+  return dadosDid(did, limparResposta(await a.enviar("22" + did, { timeout: 12000 })));
+}
+
+async function voltarPadrao(a) { await a.enviar("ATCRA"); await a.enviar("ATSH7DF"); }
+
+async function bateriaToyota(a) {
+  const r = {};
+  let b = await lerDid(a, ...TOYOTA_HV.tensaoCorrente);
+  if (b && b.length >= 6) {
+    r.tensao_v = +(u16(b, 2) * 0.015625).toFixed(1);
+    const c = u16(b, 4);
+    r.corrente_a = (c >= 32768 ? c - 65536 : c) / 10;
+  }
+  b = await lerDid(a, ...TOYOTA_HV.carga);
+  if (b && b.length) r.carga_pct = +(b[0] * 100 / 255).toFixed(1);
+  b = await lerDid(a, ...TOYOTA_HV.tempMax); if (b && b.length) r.temp_max_c = b[0] - 50;
+  b = await lerDid(a, ...TOYOTA_HV.tempMin); if (b && b.length) r.temp_min_c = b[0] - 50;
+  b = await lerDid(a, ...TOYOTA_HV.temperaturas);
+  if (b) {
+    const t = [];
+    for (let i = 0; i + 1 < b.length; i += 2) t.push(+(u16(b, i) * 19531 / 5e6 - 50).toFixed(1));
+    r.temperaturas_c = t.filter(x => x > -50);
+  }
+  b = await lerDid(a, ...TOYOTA_HV.celulas);
+  if (b) {
+    const cel = [];
+    for (let i = 0; i + 1 < b.length; i += 2) cel.push(+(u16(b, i) * 5 / 65535).toFixed(4));
+    const validas = cel.filter(v => v > 0.5);
+    if (validas.length) {
+      const min = Math.min(...validas), max = Math.max(...validas);
+      Object.assign(r, {
+        celulas_v: validas, celula_min_v: min, celula_max_v: max,
+        celula_min_n: validas.indexOf(min) + 1, celula_max_n: validas.indexOf(max) + 1,
+        diferenca_mv: +((max - min) * 1000).toFixed(1),
+      });
+      r.avaliacao = avaliarCelulas(r.diferenca_mv)[1];
+    }
+  }
+  await voltarPadrao(a);
+  return r;
+}
+
+async function lerModulos(a) {
+  const res = {};
+  for (const [hdr, [rax, nome]] of Object.entries(MODULOS_TOYOTA)) {
+    await a.enviar("ATSH" + hdr);
+    await a.enviar("ATCRA" + rax);
+    res[hdr] = { nome, codigos: decodificarDtcsUds(limparResposta(await a.enviar("1902FF", { timeout: 6000 }))) };
+  }
+  await voltarPadrao(a);
+  return res;
+}
+
+async function diagnosticar(a) {
+  for (const c of INIT) await a.enviar(c);
+  const rel = { data: new Date().toISOString(), adaptador: a.nome };
+  status("Lendo VIN e dados…");
+  rel.vin = decodificarVin(limparResposta(await a.enviar("0902")));
+  rel.dados = {};
+  for (const pid of Object.keys(PIDS)) {
+    const r = decodificarPid(pid, limparResposta(await a.enviar(pid)));
+    if (r) rel.dados[pid] = r;
+  }
+  status("Lendo códigos de erro…");
+  for (const [modo, nome] of [["03", "confirmados"], ["07", "pendentes"], ["0A", "permanentes"]]) {
+    rel["dtc_" + nome] = decodificarDtcs(limparResposta(await a.enviar(modo)), modo);
+  }
+  status("Lendo bateria híbrida…");
+  rel.bateria_hv = await bateriaToyota(a);
+  status("Lendo módulos…");
+  rel.modulos = await lerModulos(a);
+  return rel;
+}
+
+// ===================== Tela =====================
+const $ = id => document.getElementById(id);
+let adaptador = null, relatorio = null;
+
+function status(t, tipo = "") { const s = $("status"); s.textContent = t; s.className = "status " + tipo; }
+function esc(t) { return String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+const item = (k, v) => `<div class="item"><span>${esc(k)}</span><span>${v}</span></div>`;
+const listaCodigos = c => c && c.length ? c.map(x => `<span class="codigo">${esc(x)}</span>`).join(", ") : '<span class="nada">nenhum</span>';
+
+// Escala absoluta: quanto a célula está abaixo da mais forte (0 mV verde → 60 mV ou mais vermelho)
+function corCelula(v, max) {
+  const t = 1 - Math.min((max - v) * 1000 / 60, 1);
+  return `hsl(${Math.round(t * 130)}, 70%, 45%)`;
+}
+
+function mostrar(rel) {
+  let h = `<section><h2>🚗 Veículo</h2>${item("VIN", esc(rel.vin || "não informado"))}`;
+  for (const d of Object.values(rel.dados)) h += item(d.nome, `${d.valor} ${esc(d.unidade)}`);
+  h += "</section>";
+
+  h += `<section><h2>⚠️ Códigos — motor / híbrido</h2>
+        ${item("Confirmados", listaCodigos(rel.dtc_confirmados))}
+        ${item("Pendentes", listaCodigos(rel.dtc_pendentes))}
+        ${item("Permanentes", listaCodigos(rel.dtc_permanentes))}</section>`;
+
+  const hv = rel.bateria_hv || {};
+  h += `<section><h2>🔋 Bateria de alta tensão</h2>`;
+  if (!Object.keys(hv).length) h += `<div class="nada">O carro não respondeu (carro desligado ou não é Toyota híbrido).</div>`;
+  if (hv.tensao_v !== undefined) h += item("Tensão", `${hv.tensao_v} V`) + item("Corrente", `${hv.corrente_a} A`);
+  if (hv.carga_pct !== undefined) h += item("Carga", `${hv.carga_pct} %`);
+  if (hv.temp_max_c !== undefined) h += item("Temperatura", `${hv.temp_min_c} a ${hv.temp_max_c} °C`);
+  if (hv.celulas_v) {
+    h += item("Células", hv.celulas_v.length)
+       + item("Mais fraca", `${hv.celula_min_v.toFixed(3)} V (nº ${hv.celula_min_n})`)
+       + item("Mais forte", `${hv.celula_max_v.toFixed(3)} V (nº ${hv.celula_max_n})`)
+       + item("Diferença", `${hv.diferenca_mv} mV`);
+    const [classe, texto] = avaliarCelulas(hv.diferenca_mv);
+    h += `<div class="selo ${classe}">${texto}</div><div class="celulas">`;
+    hv.celulas_v.forEach((v, i) => {
+      h += `<div title="Célula ${i + 1}: ${v} V" style="background:${corCelula(v, hv.celula_max_v)}"></div>`;
+    });
+    h += `</div><div class="legenda">Cada quadrado é uma célula · verde = igual à mais forte · amarelo ≈ 30 mV abaixo · vermelho = 60 mV ou mais abaixo</div>`;
+  }
+  h += "</section>";
+
+  h += `<section><h2>🧩 Outros módulos</h2>`;
+  for (const m of Object.values(rel.modulos || {})) {
+    h += item(m.nome, m.codigos === null ? '<span class="nada">não respondeu</span>' : listaCodigos(m.codigos));
+  }
+  h += "</section>";
+
+  if (rel.apagados) {
+    h += `<section><h2>🧹 Apagados agora</h2>`;
+    for (const [nome, r] of Object.entries(rel.apagados)) {
+      h += item(nome, !r.ok ? "❌ recusado" : r.voltaram.length ? `⚠️ voltou: ${listaCodigos(r.voltaram)}` : "✅ apagado");
+    }
+    h += "</section>";
+  }
+  $("resultado").innerHTML = h;
+}
+
+function opcoesApagar(rel) {
+  const op = [];
+  const motor = [...rel.dtc_confirmados, ...rel.dtc_pendentes];
+  if (motor.length) op.push({ hdr: "7DF", nome: "Motor / sistema híbrido", codigos: motor });
+  for (const [hdr, m] of Object.entries(rel.modulos || {})) {
+    if (m.codigos && m.codigos.length) op.push({ hdr, rax: MODULOS_TOYOTA[hdr][0], nome: m.nome, codigos: m.codigos });
+  }
+  return op;
+}
+
+function atualizarBotoes() {
+  $("bDiag").disabled = !adaptador;
+  $("bCopiar").disabled = !relatorio;
+  $("bApagar").disabled = !relatorio || !opcoesApagar(relatorio).length;
+}
+
+async function rodar(fn) {
+  document.querySelectorAll("button").forEach(b => b.disabled = true);
+  try { await fn(); }
+  catch (e) { status("❌ " + e.message, "erro"); log("ERRO: " + e.message); }
+  finally {
+    document.querySelectorAll("dialog button").forEach(b => b.disabled = false);
+    $("bConectar").disabled = false; $("bSimular").disabled = false;
+    atualizarBotoes();
+  }
+}
+
+$("bConectar").onclick = () => rodar(async () => {
+  status("Procurando adaptador… escolha o OBDLink na lista.");
+  if (adaptador) await adaptador.fechar();
+  adaptador = await AdaptadorBLE.conectar();
+  status(`✅ Conectado: ${adaptador.nome}. Ligue o carro (READY) e toque em Fazer diagnóstico.`, "ok");
+});
+
+$("bSimular").onclick = () => rodar(async () => {
+  adaptador = new AdaptadorSimulado();
+  status("Modo teste ligado (dados simulados, sem carro).", "ok");
+});
+
+$("bDiag").onclick = () => rodar(async () => {
+  relatorio = await diagnosticar(adaptador);
+  mostrar(relatorio);
+  status(`✅ Diagnóstico concluído (${adaptador.nome}).`, "ok");
+});
+
+$("bCopiar").onclick = async () => {
+  const texto = JSON.stringify(relatorio, null, 2) + "\n\n--- registro técnico ---\n" + logEl.textContent;
+  try { await navigator.clipboard.writeText(texto); status("📋 Relatório copiado. Cole na conversa com o Claude.", "ok"); }
+  catch { status("Não consegui copiar. Abra o registro técnico e copie manualmente.", "erro"); }
+};
+
+$("bApagar").onclick = () => {
+  const op = opcoesApagar(relatorio);
+  $("opcoes").innerHTML = op.map((o, i) =>
+    `<label><input type="checkbox" data-i="${i}"> <span><b>${esc(o.nome)}</b><br><span class="codigo">${esc(o.codigos.join(", "))}</span></span></label>`).join("");
+  $("opcoes").onchange = () => {
+    const marcados = [...$("opcoes").querySelectorAll("input:checked")].map(x => op[x.dataset.i]);
+    $("avisoAirbag").hidden = !marcados.some(o => o.hdr === "780");
+  };
+  $("avisoAirbag").hidden = true;
+  $("confirma").value = "";
+  $("dApagar").showModal();
+};
+
+$("bCancelar").onclick = () => $("dApagar").close();
+
+$("bConfirmar").onclick = () => {
+  const op = opcoesApagar(relatorio);
+  const escolhidos = [...$("opcoes").querySelectorAll("input:checked")].map(x => op[x.dataset.i]);
+  if (!escolhidos.length) { alertaDialogo("Marque pelo menos um módulo."); return; }
+  if ($("confirma").value.trim().toUpperCase() !== "APAGAR") { alertaDialogo("Digite APAGAR para confirmar."); return; }
+  $("dApagar").close();
+  rodar(async () => {
+    relatorio.apagado_em = new Date().toISOString();
+    relatorio.apagados = {};
+    for (const o of escolhidos) {
+      status(`Apagando: ${o.nome}…`);
+      let ok, voltaram;
+      if (o.hdr === "7DF") {
+        await voltarPadrao(adaptador);
+        ok = limparResposta(await adaptador.enviar("04", { apagar: true })).some(l => l.startsWith("44"));
+        voltaram = [];
+        for (const m of ["03", "07"]) voltaram.push(...decodificarDtcs(limparResposta(await adaptador.enviar(m)), m));
+        relatorio.dtc_confirmados = voltaram;
+        relatorio.dtc_pendentes = [];
+      } else {
+        await adaptador.enviar("ATSH" + o.hdr);
+        await adaptador.enviar("ATCRA" + o.rax);
+        ok = limparResposta(await adaptador.enviar("14FFFFFF", { timeout: 8000, apagar: true })).some(l => l.startsWith("54"));
+        voltaram = decodificarDtcsUds(limparResposta(await adaptador.enviar("1902FF"))) || [];
+        relatorio.modulos[o.hdr].codigos = voltaram;
+      }
+      relatorio.apagados[o.nome] = { ok, voltaram };
+    }
+    await voltarPadrao(adaptador);
+    mostrar(relatorio);
+    status("Pronto. Veja o resultado em “Apagados agora”.", "ok");
+  });
+};
+
+function alertaDialogo(t) {
+  let p = $("dApagar").querySelector(".erroDialogo");
+  if (!p) { p = document.createElement("p"); p.className = "erroDialogo aviso"; p.style.color = "var(--vermelho)"; $("confirma").after(p); }
+  p.textContent = t;
+}
+
+if (!navigator.bluetooth) {
+  status("Este navegador não tem Bluetooth. No iPhone, abra no app Bluefy. (O modo teste funciona em qualquer lugar.)");
+}
+</script>
+</body>
+</html>
